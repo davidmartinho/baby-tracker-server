@@ -1,0 +1,32 @@
+version: 2.1
+
+jobs:
+  test:
+    docker:
+      - image: cimg/go:1.24
+    working_directory: ~/project
+    steps:
+      - checkout
+
+      - restore_cache:
+          keys:
+            - go-mod-v1-{{ checksum "go.mod" }}
+            - go-mod-v1-
+
+      - run:
+          name: Download dependencies
+          command: go mod download
+
+      - run:
+          name: Run tests
+          command: go test ./...
+
+      - save_cache:
+          key: go-mod-v1-{{ checksum "go.mod" }}
+          paths:
+            - /home/circleci/go/pkg/mod
+
+workflows:
+  test-workflow:
+    jobs:
+      - test
