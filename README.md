@@ -22,6 +22,8 @@ export DATABASE_URL=postgres://postgres:postgres@localhost:5432/baby_tracker?ssl
 go run ./cmd/server
 ```
 
+On startup, the app auto-seeds `babies` with 3 records (`Alice`, `Bob`, `Charlie`) when the table is empty.
+
 By default the app listens on port `8080`. Set the `PORT` environment variable to override it.
 
 ## Deploy to Fly.io
