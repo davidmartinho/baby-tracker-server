@@ -4,29 +4,31 @@ jobs:
   test:
     docker:
       - image: cimg/go:1.24
-    working_directory: ~/project
+        environment:
+          DATABASE_URL: postgres://postgres:postgres@localhost:5432/baby_tracker_test?sslmode=disable
+      - image: cimg/postgres:16.9
+        environment:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: baby_tracker_test
     steps:
       - checkout
-
-      - restore_cache:
-          keys:
-            - go-mod-v1-{{ checksum "go.mod" }}
-            - go-mod-v1-
-
       - run:
-          name: Download dependencies
-          command: go mod download
-
+          name: Wait for Postgres
+          command: |
+            for i in $(seq 1 30); do
+              if (echo > /dev/tcp/localhost/5432) >/dev/null 2>&1; then
+                exit 0
+              fi
+              sleep 2
+            done
+            echo "Postgres did not become ready in time"
+            exit 1
       - run:
           name: Run tests
           command: go test ./...
 
-      - save_cache:
-          key: go-mod-v1-{{ checksum "go.mod" }}
-          paths:
-            - /home/circleci/go/pkg/mod
-
 workflows:
-  test-workflow:
+  test:
     jobs:
       - test

@@ -1,7 +1,9 @@
 package server_test
 
 import (
+	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -9,13 +11,25 @@ import (
 	"baby-tracker-server/internal/server"
 )
 
+type stubBabyStore struct {
+	data []server.Baby
+	err  error
+}
+
+func (s stubBabyStore) ListBabies(_ context.Context) ([]server.Baby, error) {
+	if s.err != nil {
+		return nil, s.err
+	}
+	return s.data, nil
+}
+
 func TestHealthz(t *testing.T) {
 	t.Parallel()
 
 	req := httptest.NewRequest(http.MethodGet, "/healthz", nil)
 	rr := httptest.NewRecorder()
 
-	server.NewRouter().ServeHTTP(rr, req)
+	server.NewRouter(stubBabyStore{}).ServeHTTP(rr, req)
 
 	if rr.Code != http.StatusOK {
 		t.Fatalf("expected status %d, got %d", http.StatusOK, rr.Code)
@@ -37,21 +51,39 @@ func TestListBabies(t *testing.T) {
 	req := httptest.NewRequest(http.MethodGet, "/v1/babies", nil)
 	rr := httptest.NewRecorder()
 
-	server.NewRouter().ServeHTTP(rr, req)
+	server.NewRouter(stubBabyStore{
+		data: []server.Baby{{ID: 1, Name: "Alice"}},
+	}).ServeHTTP(rr, req)
 
 	if rr.Code != http.StatusOK {
 		t.Fatalf("expected status %d, got %d", http.StatusOK, rr.Code)
 	}
 
 	var got struct {
-		Data []any `json:"data"`
+		Data []server.Baby `json:"data"`
 	}
 	if err := json.Unmarshal(rr.Body.Bytes(), &got); err != nil {
 		t.Fatalf("failed to unmarshal response: %v", err)
 	}
 
-	if got.Data == nil {
-		t.Fatal("expected data array to be present")
+	if len(got.Data) != 1 {
+		t.Fatalf("expected 1 baby, got %d", len(got.Data))
+	}
+	if got.Data[0].Name != "Alice" {
+		t.Fatalf("expected baby name Alice, got %q", got.Data[0].Name)
+	}
+}
+
+func TestListBabiesStoreError(t *testing.T) {
+	t.Parallel()
+
+	req := httptest.NewRequest(http.MethodGet, "/v1/babies", nil)
+	rr := httptest.NewRecorder()
+
+	server.NewRouter(stubBabyStore{err: errors.New("boom")}).ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusInternalServerError {
+		t.Fatalf("expected status %d, got %d", http.StatusInternalServerError, rr.Code)
 	}
 }
 
@@ -61,7 +93,7 @@ func TestGetProfile(t *testing.T) {
 	req := httptest.NewRequest(http.MethodGet, "/v1/profile", nil)
 	rr := httptest.NewRecorder()
 
-	server.NewRouter().ServeHTTP(rr, req)
+	server.NewRouter(stubBabyStore{}).ServeHTTP(rr, req)
 
 	if rr.Code != http.StatusOK {
 		t.Fatalf("expected status %d, got %d", http.StatusOK, rr.Code)

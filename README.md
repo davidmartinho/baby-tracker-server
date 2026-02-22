@@ -4,7 +4,21 @@ Scaffolded Go server for the Baby Tracker application.
 
 ## Run locally
 
+Start Postgres first (example with Docker):
+
 ```bash
+docker run --name baby-tracker-postgres \
+  -e POSTGRES_USER=postgres \
+  -e POSTGRES_PASSWORD=postgres \
+  -e POSTGRES_DB=baby_tracker \
+  -p 5432:5432 \
+  -d postgres:16
+```
+
+Set `DATABASE_URL`, then run the server:
+
+```bash
+export DATABASE_URL=postgres://postgres:postgres@localhost:5432/baby_tracker?sslmode=disable
 go run ./cmd/server
 ```
 
@@ -47,5 +61,6 @@ The Fly service is configured to route HTTP traffic to internal port `8080` and 
 ## Test
 
 ```bash
+export DATABASE_URL=postgres://postgres:postgres@localhost:5432/baby_tracker?sslmode=disable
 go test ./...
 ```
