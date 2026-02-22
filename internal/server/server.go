@@ -11,6 +11,7 @@ func NewRouter() http.Handler {
 
 	mux.HandleFunc("GET /healthz", healthz)
 	mux.HandleFunc("GET /v1/babies", listBabies)
+	mux.HandleFunc("GET /v1/profile", getProfile)
 
 	return mux
 }
@@ -21,6 +22,14 @@ func healthz(w http.ResponseWriter, _ *http.Request) {
 
 func listBabies(w http.ResponseWriter, _ *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"data": []any{}})
+}
+
+func getProfile(w http.ResponseWriter, _ *http.Request) {
+	writeJSON(w, http.StatusOK, map[string]string{
+		"id":    "usr_mock_1",
+		"name":  "Baby Tracker User",
+		"email": "user@example.com",
+	})
 }
 
 func writeJSON(w http.ResponseWriter, status int, payload any) {
