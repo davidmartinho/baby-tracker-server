@@ -3,6 +3,7 @@ package postgres_test
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"os"
 	"testing"
 	"time"
@@ -10,6 +11,7 @@ import (
 	_ "github.com/jackc/pgx/v5/stdlib"
 
 	"baby-tracker-server/internal/postgres"
+	"baby-tracker-server/internal/server"
 )
 
 func TestStoreListBabies(t *testing.T) {
@@ -60,5 +62,67 @@ func TestStoreListBabies(t *testing.T) {
 	}
 	if got[1].Name != "Bob" {
 		t.Fatalf("expected second baby Bob, got %q", got[1].Name)
+	}
+}
+
+func TestStoreCreateEvent(t *testing.T) {
+	t.Parallel()
+
+	databaseURL := os.Getenv("DATABASE_URL")
+	if databaseURL == "" {
+		t.Skip("DATABASE_URL not set")
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	store, err := postgres.New(ctx, databaseURL)
+	if err != nil {
+		t.Fatalf("failed to initialize store: %v", err)
+	}
+	defer func() {
+		_ = store.Close()
+	}()
+
+	db, err := sql.Open("pgx", databaseURL)
+	if err != nil {
+		t.Fatalf("failed to open db for setup: %v", err)
+	}
+	defer func() {
+		_ = db.Close()
+	}()
+
+	if _, err := db.ExecContext(ctx, "TRUNCATE TABLE events RESTART IDENTITY CASCADE"); err != nil {
+		t.Fatalf("failed to truncate events: %v", err)
+	}
+
+	var babyID int64
+	if err := db.QueryRowContext(ctx, "INSERT INTO babies (name) VALUES ($1) RETURNING id", "Ada").Scan(&babyID); err != nil {
+		t.Fatalf("failed to seed baby: %v", err)
+	}
+
+	details, err := json.Marshal(server.DiaperEvent{Kind: "wet"})
+	if err != nil {
+		t.Fatalf("failed to marshal details: %v", err)
+	}
+
+	created, err := store.CreateEvent(ctx, server.NewEvent{
+		BabyID:     babyID,
+		Type:       server.EventTypeDiaper,
+		OccurredAt: time.Now().UTC(),
+		Details:    details,
+	})
+	if err != nil {
+		t.Fatalf("failed to create event: %v", err)
+	}
+
+	if created.ID == 0 {
+		t.Fatal("expected event id to be set")
+	}
+	if created.BabyID != babyID {
+		t.Fatalf("expected baby id %d, got %d", babyID, created.BabyID)
+	}
+	if created.Type != server.EventTypeDiaper {
+		t.Fatalf("expected event type diaper, got %q", created.Type)
 	}
 }
