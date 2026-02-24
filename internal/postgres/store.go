@@ -67,12 +67,49 @@ func (s *Store) ListBabies(ctx context.Context) ([]server.Baby, error) {
 	return data, nil
 }
 
+func (s *Store) CreateEvent(ctx context.Context, event server.Event) (server.Event, error) {
+	const query = `
+		INSERT INTO events (baby_id, type, started_at, ended_at)
+		VALUES ($1, $2, $3, $4)
+		RETURNING id
+	`
+
+	var id int64
+	endedAt := sql.NullTime{}
+	if event.EndedAt != nil {
+		endedAt = sql.NullTime{Time: *event.EndedAt, Valid: true}
+	}
+
+	if err := s.db.QueryRowContext(ctx, query, event.BabyID, string(event.Type), event.StartedAt, endedAt).Scan(&id); err != nil {
+		return server.Event{}, fmt.Errorf("insert event: %w", err)
+	}
+
+	event.ID = id
+	return event, nil
+}
+
 func (s *Store) migrate(ctx context.Context) error {
 	const ddl = `
 		CREATE TABLE IF NOT EXISTS babies (
 			id BIGSERIAL PRIMARY KEY,
 			name TEXT NOT NULL,
 			created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+		);
+
+		CREATE TABLE IF NOT EXISTS events (
+			id BIGSERIAL PRIMARY KEY,
+			baby_id BIGINT NOT NULL REFERENCES babies(id) ON DELETE CASCADE,
+			type TEXT NOT NULL,
+			started_at TIMESTAMPTZ NOT NULL,
+			ended_at TIMESTAMPTZ,
+			created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+			CONSTRAINT events_type_check CHECK (
+				type IN ('diaper_change', 'nursing_left', 'nursing_right', 'sleep')
+			),
+			CONSTRAINT events_time_check CHECK (
+				(type = 'diaper_change' AND ended_at IS NULL)
+				OR (type IN ('nursing_left', 'nursing_right', 'sleep') AND ended_at IS NOT NULL)
+			)
 		)
 	`
 
