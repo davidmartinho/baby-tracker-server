@@ -67,13 +67,66 @@ func (s *Store) ListBabies(ctx context.Context) ([]server.Baby, error) {
 	return data, nil
 }
 
+func (s *Store) CreateEvent(ctx context.Context, input server.CreateEventInput) (server.Event, error) {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return server.Event{}, fmt.Errorf("begin create event tx: %w", err)
+	}
+	defer func() {
+		_ = tx.Rollback()
+	}()
+
+	var exists bool
+	if err := tx.QueryRowContext(ctx, "SELECT EXISTS (SELECT 1 FROM babies WHERE id = $1)", input.BabyID).Scan(&exists); err != nil {
+		return server.Event{}, fmt.Errorf("check baby exists: %w", err)
+	}
+	if !exists {
+		return server.Event{}, server.ErrNotFound
+	}
+
+	const query = `
+		INSERT INTO events (baby_id, type, occurred_at, details)
+		VALUES ($1, $2, $3, $4)
+		RETURNING id
+	`
+
+	var id int64
+	if err := tx.QueryRowContext(ctx, query, input.BabyID, string(input.Type), input.OccurredAt, input.Details).Scan(&id); err != nil {
+		return server.Event{}, fmt.Errorf("insert event: %w", err)
+	}
+
+	if err := tx.Commit(); err != nil {
+		return server.Event{}, fmt.Errorf("commit create event: %w", err)
+	}
+
+	return server.Event{
+		ID:         id,
+		BabyID:     input.BabyID,
+		Type:       input.Type,
+		OccurredAt: input.OccurredAt,
+		Details:    input.Details,
+	}, nil
+}
+
 func (s *Store) migrate(ctx context.Context) error {
 	const ddl = `
 		CREATE TABLE IF NOT EXISTS babies (
 			id BIGSERIAL PRIMARY KEY,
 			name TEXT NOT NULL,
 			created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-		)
+		);
+
+		CREATE TABLE IF NOT EXISTS events (
+			id BIGSERIAL PRIMARY KEY,
+			baby_id BIGINT NOT NULL REFERENCES babies(id) ON DELETE CASCADE,
+			type TEXT NOT NULL CHECK (type IN ('diaper', 'nursing', 'sleep')),
+			occurred_at TIMESTAMPTZ NOT NULL,
+			details JSONB NOT NULL DEFAULT '{}'::jsonb,
+			created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+		);
+
+		CREATE INDEX IF NOT EXISTS events_baby_id_idx ON events(baby_id);
+		CREATE INDEX IF NOT EXISTS events_type_idx ON events(type);
 	`
 
 	if _, err := s.db.ExecContext(ctx, ddl); err != nil {
