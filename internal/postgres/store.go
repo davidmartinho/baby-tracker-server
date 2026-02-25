@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"time"
 
 	_ "github.com/jackc/pgx/v5/stdlib"
 
@@ -67,11 +68,64 @@ func (s *Store) ListBabies(ctx context.Context) ([]server.Baby, error) {
 	return data, nil
 }
 
+func (s *Store) CreateEvent(ctx context.Context, babyID int64, input server.CreateEventInput) (server.Event, error) {
+	const query = `
+		INSERT INTO events (baby_id, type, start_time, end_time, side)
+		VALUES ($1, $2, $3, $4, $5)
+		RETURNING id, baby_id, type, start_time, end_time, side
+	`
+
+	var (
+		endTime sql.NullTime
+		side    sql.NullString
+	)
+	if input.EndTime != nil {
+		endTime = sql.NullTime{Time: *input.EndTime, Valid: true}
+	}
+	if input.Side != nil {
+		side = sql.NullString{String: *input.Side, Valid: true}
+	}
+
+	var event server.Event
+	var startTime time.Time
+	if input.StartTime != nil {
+		startTime = *input.StartTime
+	}
+
+	row := s.db.QueryRowContext(ctx, query, babyID, input.Type, startTime, endTime, side)
+	var (
+		gotEndTime sql.NullTime
+		gotSide    sql.NullString
+	)
+	if err := row.Scan(&event.ID, &event.BabyID, &event.Type, &event.StartTime, &gotEndTime, &gotSide); err != nil {
+		return server.Event{}, fmt.Errorf("insert event: %w", err)
+	}
+
+	if gotEndTime.Valid {
+		event.EndTime = &gotEndTime.Time
+	}
+	if gotSide.Valid {
+		event.Side = &gotSide.String
+	}
+
+	return event, nil
+}
+
 func (s *Store) migrate(ctx context.Context) error {
 	const ddl = `
 		CREATE TABLE IF NOT EXISTS babies (
 			id BIGSERIAL PRIMARY KEY,
 			name TEXT NOT NULL,
+			created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+		);
+
+		CREATE TABLE IF NOT EXISTS events (
+			id BIGSERIAL PRIMARY KEY,
+			baby_id BIGINT NOT NULL REFERENCES babies(id) ON DELETE CASCADE,
+			type TEXT NOT NULL,
+			start_time TIMESTAMPTZ NOT NULL,
+			end_time TIMESTAMPTZ NULL,
+			side TEXT NULL,
 			created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 		)
 	`
