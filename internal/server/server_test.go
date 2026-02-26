@@ -8,6 +8,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"baby-tracker-server/internal/server"
 )
@@ -16,6 +17,7 @@ type stubBabyStore struct {
 	data            []server.Baby
 	err             error
 	createEventFunc func(ctx context.Context, input server.CreateEventInput) (server.Event, error)
+	listWeightFunc  func(ctx context.Context, babyID int64) ([]server.WeightEntry, error)
 }
 
 func (s stubBabyStore) ListBabies(_ context.Context) ([]server.Baby, error) {
@@ -30,6 +32,13 @@ func (s stubBabyStore) CreateEvent(ctx context.Context, input server.CreateEvent
 		return server.Event{}, errors.New("create event not implemented")
 	}
 	return s.createEventFunc(ctx, input)
+}
+
+func (s stubBabyStore) ListWeightEntries(ctx context.Context, babyID int64) ([]server.WeightEntry, error) {
+	if s.listWeightFunc == nil {
+		return nil, errors.New("list weight entries not implemented")
+	}
+	return s.listWeightFunc(ctx, babyID)
 }
 
 func TestHealthz(t *testing.T) {
@@ -90,6 +99,74 @@ func TestListBabiesStoreError(t *testing.T) {
 	rr := httptest.NewRecorder()
 
 	server.NewRouter(stubBabyStore{err: errors.New("boom")}).ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusInternalServerError {
+		t.Fatalf("expected status %d, got %d", http.StatusInternalServerError, rr.Code)
+	}
+}
+
+func TestListWeightEntries(t *testing.T) {
+	t.Parallel()
+
+	req := httptest.NewRequest(http.MethodGet, "/v1/babies/42/weights", nil)
+	rr := httptest.NewRecorder()
+
+	server.NewRouter(stubBabyStore{
+		listWeightFunc: func(_ context.Context, babyID int64) ([]server.WeightEntry, error) {
+			if babyID != 42 {
+				t.Fatalf("expected baby id 42, got %d", babyID)
+			}
+			return []server.WeightEntry{
+				{
+					OccurredAt: mustParseRFC3339(t, "2026-02-26T10:00:00Z"),
+					WeightKg:   3.45,
+				},
+			}, nil
+		},
+	}).ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("expected status %d, got %d", http.StatusOK, rr.Code)
+	}
+
+	var got struct {
+		Data []server.WeightEntry `json:"data"`
+	}
+	if err := json.Unmarshal(rr.Body.Bytes(), &got); err != nil {
+		t.Fatalf("failed to unmarshal response: %v", err)
+	}
+	if len(got.Data) != 1 {
+		t.Fatalf("expected 1 weight entry, got %d", len(got.Data))
+	}
+	if got.Data[0].WeightKg != 3.45 {
+		t.Fatalf("expected weight 3.45, got %f", got.Data[0].WeightKg)
+	}
+}
+
+func TestListWeightEntriesInvalidBabyID(t *testing.T) {
+	t.Parallel()
+
+	req := httptest.NewRequest(http.MethodGet, "/v1/babies/not-a-number/weights", nil)
+	rr := httptest.NewRecorder()
+
+	server.NewRouter(stubBabyStore{}).ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusBadRequest {
+		t.Fatalf("expected status %d, got %d", http.StatusBadRequest, rr.Code)
+	}
+}
+
+func TestListWeightEntriesStoreError(t *testing.T) {
+	t.Parallel()
+
+	req := httptest.NewRequest(http.MethodGet, "/v1/babies/42/weights", nil)
+	rr := httptest.NewRecorder()
+
+	server.NewRouter(stubBabyStore{
+		listWeightFunc: func(_ context.Context, _ int64) ([]server.WeightEntry, error) {
+			return nil, errors.New("boom")
+		},
+	}).ServeHTTP(rr, req)
 
 	if rr.Code != http.StatusInternalServerError {
 		t.Fatalf("expected status %d, got %d", http.StatusInternalServerError, rr.Code)
@@ -259,4 +336,15 @@ func TestCreateEventSleep(t *testing.T) {
 	if got.Data.Type != "sleep" {
 		t.Fatalf("expected type sleep, got %q", got.Data.Type)
 	}
+}
+
+func mustParseRFC3339(t *testing.T, value string) time.Time {
+	t.Helper()
+
+	got, err := time.Parse(time.RFC3339, value)
+	if err != nil {
+		t.Fatalf("failed to parse time %q: %v", value, err)
+	}
+
+	return got
 }

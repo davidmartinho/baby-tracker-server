@@ -164,3 +164,66 @@ func TestStoreCreateEvent(t *testing.T) {
 		t.Fatalf("expected type diaper, got %q", got.Type)
 	}
 }
+
+func TestStoreListWeightEntries(t *testing.T) {
+	databaseURL := os.Getenv("DATABASE_URL")
+	if databaseURL == "" {
+		t.Skip("DATABASE_URL not set")
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	store, err := postgres.New(ctx, databaseURL)
+	if err != nil {
+		t.Fatalf("failed to initialize store: %v", err)
+	}
+	defer func() {
+		_ = store.Close()
+	}()
+
+	db, err := sql.Open("pgx", databaseURL)
+	if err != nil {
+		t.Fatalf("failed to open db for setup: %v", err)
+	}
+	defer func() {
+		_ = db.Close()
+	}()
+
+	if _, err := db.ExecContext(ctx, "TRUNCATE TABLE events, babies RESTART IDENTITY"); err != nil {
+		t.Fatalf("failed to truncate tables: %v", err)
+	}
+
+	if _, err := db.ExecContext(ctx, "INSERT INTO babies (name) VALUES ($1), ($2)", "Mila", "Noah"); err != nil {
+		t.Fatalf("failed to seed babies: %v", err)
+	}
+
+	if _, err := db.ExecContext(ctx, `
+		INSERT INTO events (baby_id, type, occurred_at, details)
+		VALUES
+			($1, 'weight', '2026-02-26T10:00:00Z', '{"weight_kg":3.40}'),
+			($1, 'diaper', '2026-02-26T11:00:00Z', '{"notes":"x"}'),
+			($1, 'weight', '2026-02-26T12:00:00Z', '{"weight_kg":3.45}'),
+			($2, 'weight', '2026-02-26T10:00:00Z', '{"weight_kg":4.10}')
+	`, 1, 2); err != nil {
+		t.Fatalf("failed to seed events: %v", err)
+	}
+
+	got, err := store.ListWeightEntries(ctx, 1)
+	if err != nil {
+		t.Fatalf("failed to list weight entries: %v", err)
+	}
+
+	if len(got) != 2 {
+		t.Fatalf("expected 2 weight entries, got %d", len(got))
+	}
+	if got[0].WeightKg != 3.40 {
+		t.Fatalf("expected first weight 3.40, got %f", got[0].WeightKg)
+	}
+	if got[1].WeightKg != 3.45 {
+		t.Fatalf("expected second weight 3.45, got %f", got[1].WeightKg)
+	}
+	if !got[0].OccurredAt.Before(got[1].OccurredAt) {
+		t.Fatalf("expected entries ordered by occurred_at ascending, got %+v", got)
+	}
+}

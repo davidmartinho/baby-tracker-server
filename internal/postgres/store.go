@@ -99,6 +99,38 @@ func (s *Store) CreateEvent(ctx context.Context, input server.CreateEventInput) 
 	return event, nil
 }
 
+func (s *Store) ListWeightEntries(ctx context.Context, babyID int64) ([]server.WeightEntry, error) {
+	const query = `
+		SELECT occurred_at, (details->>'weight_kg')::double precision AS weight_kg
+		FROM events
+		WHERE baby_id = $1
+			AND type = 'weight'
+			AND details ? 'weight_kg'
+		ORDER BY occurred_at ASC, id ASC
+	`
+
+	rows, err := s.db.QueryContext(ctx, query, babyID)
+	if err != nil {
+		return nil, fmt.Errorf("query weight entries: %w", err)
+	}
+	defer rows.Close()
+
+	data := make([]server.WeightEntry, 0)
+	for rows.Next() {
+		var entry server.WeightEntry
+		if err := rows.Scan(&entry.OccurredAt, &entry.WeightKg); err != nil {
+			return nil, fmt.Errorf("scan weight entry: %w", err)
+		}
+		data = append(data, entry)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate weight entries: %w", err)
+	}
+
+	return data, nil
+}
+
 func (s *Store) migrate(ctx context.Context) error {
 	const ddl = `
 		CREATE TABLE IF NOT EXISTS babies (

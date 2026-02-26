@@ -31,9 +31,15 @@ type CreateEventInput struct {
 	Details    json.RawMessage
 }
 
+type WeightEntry struct {
+	OccurredAt time.Time `json:"occurred_at"`
+	WeightKg   float64   `json:"weight_kg"`
+}
+
 type BabyStore interface {
 	ListBabies(ctx context.Context) ([]Baby, error)
 	CreateEvent(ctx context.Context, input CreateEventInput) (Event, error)
+	ListWeightEntries(ctx context.Context, babyID int64) ([]WeightEntry, error)
 }
 
 // NewRouter creates the HTTP router for the Baby Tracker API.
@@ -42,6 +48,7 @@ func NewRouter(store BabyStore) http.Handler {
 
 	mux.HandleFunc("GET /healthz", healthz)
 	mux.HandleFunc("GET /v1/babies", listBabies(store))
+	mux.HandleFunc("GET /v1/babies/{id}/weights", listWeightEntries(store))
 	mux.HandleFunc("POST /v1/babies/{id}/events", createEvent(store))
 	mux.HandleFunc("GET /v1/profile", getProfile)
 
@@ -57,6 +64,25 @@ func listBabies(store BabyStore) http.HandlerFunc {
 		data, err := store.ListBabies(r.Context())
 		if err != nil {
 			log.Printf("list babies failed: %v", err)
+			http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+			return
+		}
+
+		writeJSON(w, http.StatusOK, map[string]any{"data": data})
+	}
+}
+
+func listWeightEntries(store BabyStore) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		babyID, err := parseID(r.PathValue("id"))
+		if err != nil {
+			http.Error(w, "invalid baby id", http.StatusBadRequest)
+			return
+		}
+
+		data, err := store.ListWeightEntries(r.Context(), babyID)
+		if err != nil {
+			log.Printf("list weight entries failed: %v", err)
 			http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
 			return
 		}
