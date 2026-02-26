@@ -3,6 +3,7 @@ package postgres
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"fmt"
 
 	_ "github.com/jackc/pgx/v5/stdlib"
@@ -67,11 +68,45 @@ func (s *Store) ListBabies(ctx context.Context) ([]server.Baby, error) {
 	return data, nil
 }
 
+func (s *Store) CreateEvent(ctx context.Context, babyID int64, input server.EventInput) (server.Event, error) {
+	const query = `
+		INSERT INTO events (baby_id, type, occurred_at, details)
+		VALUES ($1, $2, $3, $4)
+		RETURNING id, created_at
+	`
+
+	detailsJSON, err := json.Marshal(input.Details)
+	if err != nil {
+		return server.Event{}, fmt.Errorf("marshal event details: %w", err)
+	}
+
+	var event server.Event
+	event.BabyID = babyID
+	event.Type = input.Type
+	event.OccurredAt = input.OccurredAt
+	event.Details = input.Details
+
+	if err := s.db.QueryRowContext(ctx, query, babyID, input.Type, input.OccurredAt, detailsJSON).Scan(&event.ID, &event.CreatedAt); err != nil {
+		return server.Event{}, fmt.Errorf("insert event: %w", err)
+	}
+
+	return event, nil
+}
+
 func (s *Store) migrate(ctx context.Context) error {
 	const ddl = `
 		CREATE TABLE IF NOT EXISTS babies (
 			id BIGSERIAL PRIMARY KEY,
 			name TEXT NOT NULL,
+			created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+		);
+
+		CREATE TABLE IF NOT EXISTS events (
+			id BIGSERIAL PRIMARY KEY,
+			baby_id BIGINT NOT NULL REFERENCES babies(id) ON DELETE CASCADE,
+			type TEXT NOT NULL,
+			occurred_at TIMESTAMPTZ NOT NULL,
+			details JSONB NOT NULL DEFAULT '{}'::jsonb,
 			created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 		)
 	`
