@@ -10,6 +10,7 @@ import (
 	_ "github.com/jackc/pgx/v5/stdlib"
 
 	"baby-tracker-server/internal/postgres"
+	"baby-tracker-server/internal/server"
 )
 
 func TestStoreListBabies(t *testing.T) {
@@ -60,5 +61,58 @@ func TestStoreListBabies(t *testing.T) {
 	}
 	if got[1].Name != "Bob" {
 		t.Fatalf("expected second baby Bob, got %q", got[1].Name)
+	}
+}
+
+func TestStoreCreateEvent(t *testing.T) {
+	t.Parallel()
+
+	databaseURL := os.Getenv("DATABASE_URL")
+	if databaseURL == "" {
+		t.Skip("DATABASE_URL not set")
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	store, err := postgres.New(ctx, databaseURL)
+	if err != nil {
+		t.Fatalf("failed to initialize store: %v", err)
+	}
+	defer func() {
+		_ = store.Close()
+	}()
+
+	db, err := sql.Open("pgx", databaseURL)
+	if err != nil {
+		t.Fatalf("failed to open db for setup: %v", err)
+	}
+	defer func() {
+		_ = db.Close()
+	}()
+
+	if _, err := db.ExecContext(ctx, "TRUNCATE TABLE events RESTART IDENTITY"); err != nil {
+		t.Fatalf("failed to truncate events: %v", err)
+	}
+
+	occurredAt := time.Now().UTC().Truncate(time.Second)
+	created, err := store.CreateEvent(ctx, server.Event{
+		Type:       "diaper",
+		OccurredAt: &occurredAt,
+	})
+	if err != nil {
+		t.Fatalf("failed to create event: %v", err)
+	}
+
+	if created.ID == 0 {
+		t.Fatal("expected created event id to be set")
+	}
+
+	var count int
+	if err := db.QueryRowContext(ctx, "SELECT COUNT(*) FROM events").Scan(&count); err != nil {
+		t.Fatalf("failed to count events: %v", err)
+	}
+	if count != 1 {
+		t.Fatalf("expected 1 event, got %d", count)
 	}
 }
