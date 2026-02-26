@@ -39,8 +39,8 @@ func TestStoreListBabies(t *testing.T) {
 		_ = db.Close()
 	}()
 
-	if _, err := db.ExecContext(ctx, "TRUNCATE TABLE babies RESTART IDENTITY"); err != nil {
-		t.Fatalf("failed to truncate babies: %v", err)
+	if _, err := db.ExecContext(ctx, "TRUNCATE TABLE events, babies RESTART IDENTITY"); err != nil {
+		t.Fatalf("failed to truncate tables: %v", err)
 	}
 
 	if _, err := db.ExecContext(ctx, "INSERT INTO babies (name) VALUES ($1), ($2)", "Alice", "Bob"); err != nil {
@@ -80,8 +80,8 @@ func TestStoreSeedsBabiesOnEmptyDatabase(t *testing.T) {
 		_ = db.Close()
 	}()
 
-	if _, err := db.ExecContext(ctx, "TRUNCATE TABLE babies RESTART IDENTITY"); err != nil {
-		t.Fatalf("failed to truncate babies: %v", err)
+	if _, err := db.ExecContext(ctx, "TRUNCATE TABLE events, babies RESTART IDENTITY"); err != nil {
+		t.Fatalf("failed to truncate tables: %v", err)
 	}
 
 	store, err := postgres.New(ctx, databaseURL)
