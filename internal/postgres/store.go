@@ -67,11 +67,45 @@ func (s *Store) ListBabies(ctx context.Context) ([]server.Baby, error) {
 	return data, nil
 }
 
+func (s *Store) CreateEvent(ctx context.Context, event server.Event) (server.Event, error) {
+	const query = `
+		INSERT INTO events (baby_id, type, occurred_at, started_at, ended_at, side)
+		VALUES ($1, $2, $3, $4, $5, $6)
+		RETURNING id
+	`
+
+	if err := s.db.QueryRowContext(
+		ctx,
+		query,
+		event.BabyID,
+		event.Type,
+		event.OccurredAt,
+		event.StartedAt,
+		event.EndedAt,
+		event.Side,
+	).Scan(&event.ID); err != nil {
+		return server.Event{}, fmt.Errorf("insert event: %w", err)
+	}
+
+	return event, nil
+}
+
 func (s *Store) migrate(ctx context.Context) error {
 	const ddl = `
 		CREATE TABLE IF NOT EXISTS babies (
 			id BIGSERIAL PRIMARY KEY,
 			name TEXT NOT NULL,
+			created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+		);
+
+		CREATE TABLE IF NOT EXISTS events (
+			id BIGSERIAL PRIMARY KEY,
+			baby_id BIGINT NOT NULL,
+			type TEXT NOT NULL,
+			occurred_at TIMESTAMPTZ,
+			started_at TIMESTAMPTZ,
+			ended_at TIMESTAMPTZ,
+			side TEXT,
 			created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 		)
 	`

@@ -49,6 +49,7 @@ The Fly service is configured to route HTTP traffic to internal port `8080` and 
 - `GET /healthz`
 - `GET /v1/babies`
 - `GET /v1/profile`
+- `POST /v1/events`
 
 ### Health check response
 
@@ -56,6 +57,22 @@ The Fly service is configured to route HTTP traffic to internal port `8080` and 
 
 ```json
 {"status":"ok"}
+```
+
+### Register events
+
+`POST /v1/events` accepts:
+
+```json
+{"baby_id":1,"type":"diaper_change","occurred_at":"2026-02-25T10:00:00Z"}
+```
+
+```json
+{"baby_id":1,"type":"nursing","started_at":"2026-02-25T10:00:00Z","ended_at":"2026-02-25T10:20:00Z","side":"left"}
+```
+
+```json
+{"baby_id":1,"type":"sleep","started_at":"2026-02-25T21:00:00Z","ended_at":"2026-02-25T23:00:00Z"}
 ```
 
 ## Test
