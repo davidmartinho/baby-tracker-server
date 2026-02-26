@@ -4,6 +4,8 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"strings"
+	"time"
 
 	_ "github.com/jackc/pgx/v5/stdlib"
 
@@ -67,11 +69,63 @@ func (s *Store) ListBabies(ctx context.Context) ([]server.Baby, error) {
 	return data, nil
 }
 
+func (s *Store) CreateEvent(ctx context.Context, babyID int64, event server.Event) (server.Event, error) {
+	const query = `
+		INSERT INTO events (
+			baby_id,
+			type,
+			occurred_at,
+			nursing_side,
+			nursing_duration_minutes,
+			sleep_start,
+			sleep_end,
+			diaper_kind
+		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+		RETURNING id
+	`
+
+	var id int64
+	err := s.db.QueryRowContext(
+		ctx,
+		query,
+		babyID,
+		event.Type,
+		event.OccurredAt,
+		nullStringPtr(event.NursingSide),
+		nullIntPtr(event.NursingDurationMinutes),
+		nullTimePtr(event.SleepStart),
+		nullTimePtr(event.SleepEnd),
+		nullStringPtr(event.DiaperKind),
+	).Scan(&id)
+	if err != nil {
+		return server.Event{}, fmt.Errorf("insert event: %w", err)
+	}
+
+	event.ID = id
+	event.BabyID = babyID
+	event.Type = strings.ToLower(event.Type)
+
+	return event, nil
+}
+
 func (s *Store) migrate(ctx context.Context) error {
 	const ddl = `
 		CREATE TABLE IF NOT EXISTS babies (
 			id BIGSERIAL PRIMARY KEY,
 			name TEXT NOT NULL,
+			created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+		);
+
+		CREATE TABLE IF NOT EXISTS events (
+			id BIGSERIAL PRIMARY KEY,
+			baby_id BIGINT NOT NULL REFERENCES babies(id) ON DELETE CASCADE,
+			type TEXT NOT NULL,
+			occurred_at TIMESTAMPTZ NOT NULL,
+			nursing_side TEXT,
+			nursing_duration_minutes INT,
+			sleep_start TIMESTAMPTZ,
+			sleep_end TIMESTAMPTZ,
+			diaper_kind TEXT,
 			created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 		)
 	`
@@ -81,4 +135,25 @@ func (s *Store) migrate(ctx context.Context) error {
 	}
 
 	return nil
+}
+
+func nullStringPtr(value *string) any {
+	if value == nil || *value == "" {
+		return nil
+	}
+	return *value
+}
+
+func nullIntPtr(value *int) any {
+	if value == nil {
+		return nil
+	}
+	return *value
+}
+
+func nullTimePtr(value *time.Time) any {
+	if value == nil {
+		return nil
+	}
+	return *value
 }
