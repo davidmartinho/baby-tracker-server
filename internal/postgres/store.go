@@ -30,6 +30,10 @@ func New(ctx context.Context, databaseURL string) (*Store, error) {
 		_ = db.Close()
 		return nil, err
 	}
+	if err := store.seedBabies(ctx); err != nil {
+		_ = db.Close()
+		return nil, err
+	}
 
 	return store, nil
 }
@@ -117,6 +121,26 @@ func (s *Store) migrate(ctx context.Context) error {
 
 	if _, err := s.db.ExecContext(ctx, ddl); err != nil {
 		return fmt.Errorf("migrate schema: %w", err)
+	}
+
+	return nil
+}
+
+func (s *Store) seedBabies(ctx context.Context) error {
+	var count int
+	if err := s.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM babies").Scan(&count); err != nil {
+		return fmt.Errorf("count babies: %w", err)
+	}
+	if count > 0 {
+		return nil
+	}
+
+	const seedQuery = `
+		INSERT INTO babies (name)
+		VALUES ($1), ($2), ($3)
+	`
+	if _, err := s.db.ExecContext(ctx, seedQuery, "Alice", "Bob", "Charlie"); err != nil {
+		return fmt.Errorf("seed babies: %w", err)
 	}
 
 	return nil
