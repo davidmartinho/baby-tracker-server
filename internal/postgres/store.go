@@ -71,13 +71,52 @@ func (s *Store) ListBabies(ctx context.Context) ([]server.Baby, error) {
 	return data, nil
 }
 
+func (s *Store) CreateEvent(ctx context.Context, input server.CreateEventInput) (server.Event, error) {
+	const query = `
+		INSERT INTO events (baby_id, type, occurred_at, details)
+		VALUES ($1, $2, $3, $4)
+		RETURNING id, baby_id, type, occurred_at, details
+	`
+
+	var event server.Event
+	if err := s.db.QueryRowContext(
+		ctx,
+		query,
+		input.BabyID,
+		input.Type,
+		input.OccurredAt,
+		input.Details,
+	).Scan(
+		&event.ID,
+		&event.BabyID,
+		&event.Type,
+		&event.OccurredAt,
+		&event.Details,
+	); err != nil {
+		return server.Event{}, fmt.Errorf("insert event: %w", err)
+	}
+
+	return event, nil
+}
+
 func (s *Store) migrate(ctx context.Context) error {
 	const ddl = `
 		CREATE TABLE IF NOT EXISTS babies (
 			id BIGSERIAL PRIMARY KEY,
 			name TEXT NOT NULL,
 			created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-		)
+		);
+
+		CREATE TABLE IF NOT EXISTS events (
+			id BIGSERIAL PRIMARY KEY,
+			baby_id BIGINT NOT NULL REFERENCES babies(id) ON DELETE CASCADE,
+			type TEXT NOT NULL,
+			occurred_at TIMESTAMPTZ NOT NULL,
+			details JSONB NOT NULL DEFAULT '{}'::jsonb,
+			created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+		);
+
+		CREATE INDEX IF NOT EXISTS events_baby_id_idx ON events (baby_id);
 	`
 
 	if _, err := s.db.ExecContext(ctx, ddl); err != nil {
