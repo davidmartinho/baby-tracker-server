@@ -338,6 +338,106 @@ func TestCreateEventSleep(t *testing.T) {
 	}
 }
 
+func TestGetBabyReportPDF(t *testing.T) {
+	t.Parallel()
+
+	req := httptest.NewRequest(http.MethodGet, "/v1/babies/42/report.pdf", nil)
+	rr := httptest.NewRecorder()
+
+	server.NewRouter(stubBabyStore{
+		data: []server.Baby{
+			{ID: 42, Name: "Mila"},
+		},
+		listWeightFunc: func(_ context.Context, babyID int64) ([]server.WeightEntry, error) {
+			if babyID != 42 {
+				t.Fatalf("expected baby id 42, got %d", babyID)
+			}
+			return []server.WeightEntry{
+				{
+					OccurredAt: mustParseRFC3339(t, "2026-02-26T10:00:00Z"),
+					WeightKg:   3.44,
+				},
+			}, nil
+		},
+	}).ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("expected status %d, got %d", http.StatusOK, rr.Code)
+	}
+	if got := rr.Header().Get("Content-Type"); got != "application/pdf" {
+		t.Fatalf("expected Content-Type application/pdf, got %q", got)
+	}
+	if got := rr.Header().Get("Content-Disposition"); !strings.Contains(got, "attachment;") || !strings.Contains(got, "baby-report-42.pdf") {
+		t.Fatalf("expected attachment filename header, got %q", got)
+	}
+	if !strings.HasPrefix(rr.Body.String(), "%PDF-1.4") {
+		t.Fatalf("expected PDF body header, got %q", rr.Body.String())
+	}
+}
+
+func TestGetBabyReportPDFInvalidBabyID(t *testing.T) {
+	t.Parallel()
+
+	req := httptest.NewRequest(http.MethodGet, "/v1/babies/nope/report.pdf", nil)
+	rr := httptest.NewRecorder()
+
+	server.NewRouter(stubBabyStore{}).ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusBadRequest {
+		t.Fatalf("expected status %d, got %d", http.StatusBadRequest, rr.Code)
+	}
+}
+
+func TestGetBabyReportPDFBabyNotFound(t *testing.T) {
+	t.Parallel()
+
+	req := httptest.NewRequest(http.MethodGet, "/v1/babies/77/report.pdf", nil)
+	rr := httptest.NewRecorder()
+
+	server.NewRouter(stubBabyStore{
+		data: []server.Baby{{ID: 42, Name: "Mila"}},
+		listWeightFunc: func(_ context.Context, _ int64) ([]server.WeightEntry, error) {
+			t.Fatal("ListWeightEntries should not be called when baby does not exist")
+			return nil, nil
+		},
+	}).ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusNotFound {
+		t.Fatalf("expected status %d, got %d", http.StatusNotFound, rr.Code)
+	}
+}
+
+func TestGetBabyReportPDFListBabiesError(t *testing.T) {
+	t.Parallel()
+
+	req := httptest.NewRequest(http.MethodGet, "/v1/babies/42/report.pdf", nil)
+	rr := httptest.NewRecorder()
+
+	server.NewRouter(stubBabyStore{err: errors.New("boom")}).ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusInternalServerError {
+		t.Fatalf("expected status %d, got %d", http.StatusInternalServerError, rr.Code)
+	}
+}
+
+func TestGetBabyReportPDFListWeightEntriesError(t *testing.T) {
+	t.Parallel()
+
+	req := httptest.NewRequest(http.MethodGet, "/v1/babies/42/report.pdf", nil)
+	rr := httptest.NewRecorder()
+
+	server.NewRouter(stubBabyStore{
+		data: []server.Baby{{ID: 42, Name: "Mila"}},
+		listWeightFunc: func(_ context.Context, _ int64) ([]server.WeightEntry, error) {
+			return nil, errors.New("boom")
+		},
+	}).ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusInternalServerError {
+		t.Fatalf("expected status %d, got %d", http.StatusInternalServerError, rr.Code)
+	}
+}
+
 func mustParseRFC3339(t *testing.T, value string) time.Time {
 	t.Helper()
 
