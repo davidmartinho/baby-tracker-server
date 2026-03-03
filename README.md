@@ -48,6 +48,10 @@ The Fly service is configured to route HTTP traffic to internal port `8080` and 
 
 - `GET /healthz`
 - `GET /v1/babies`
+- `GET /v1/children`
+- `POST /v1/children`
+- `PUT /v1/children/{id}`
+- `DELETE /v1/children/{id}`
 - `GET /v1/profile`
 
 ### Health check response
