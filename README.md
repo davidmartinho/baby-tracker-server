@@ -48,7 +48,22 @@ The Fly service is configured to route HTTP traffic to internal port `8080` and 
 
 - `GET /healthz`
 - `GET /v1/babies`
+- `POST /v1/babies`
+- `PUT /v1/babies/{id}`
+- `DELETE /v1/babies/{id}`
 - `GET /v1/profile`
+
+### Baby payload
+
+`POST /v1/babies` and `PUT /v1/babies/{id}` expect:
+
+```json
+{
+  "name": "Alice",
+  "birthDate": "2024-01-12",
+  "gender": "female"
+}
+```
 
 ### Health check response
 

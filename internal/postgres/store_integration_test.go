@@ -43,7 +43,11 @@ func TestStoreListBabies(t *testing.T) {
 		t.Fatalf("failed to truncate babies: %v", err)
 	}
 
-	if _, err := db.ExecContext(ctx, "INSERT INTO babies (name) VALUES ($1), ($2)", "Alice", "Bob"); err != nil {
+	if _, err := db.ExecContext(ctx,
+		"INSERT INTO babies (name, birth_date, gender) VALUES ($1, $2, $3), ($4, $5, $6)",
+		"Alice", "2024-01-12", "female",
+		"Bob", "2023-06-10", "male",
+	); err != nil {
 		t.Fatalf("failed to seed babies: %v", err)
 	}
 
@@ -58,7 +62,19 @@ func TestStoreListBabies(t *testing.T) {
 	if got[0].Name != "Alice" {
 		t.Fatalf("expected first baby Alice, got %q", got[0].Name)
 	}
+	if got[0].BirthDate != "2024-01-12" {
+		t.Fatalf("expected first baby birth date 2024-01-12, got %q", got[0].BirthDate)
+	}
+	if got[0].Gender != "female" {
+		t.Fatalf("expected first baby gender female, got %q", got[0].Gender)
+	}
 	if got[1].Name != "Bob" {
 		t.Fatalf("expected second baby Bob, got %q", got[1].Name)
+	}
+	if got[1].BirthDate != "2023-06-10" {
+		t.Fatalf("expected second baby birth date 2023-06-10, got %q", got[1].BirthDate)
+	}
+	if got[1].Gender != "male" {
+		t.Fatalf("expected second baby gender male, got %q", got[1].Gender)
 	}
 }
